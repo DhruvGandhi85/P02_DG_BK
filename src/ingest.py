@@ -75,7 +75,7 @@ def extract_text_from_pdf(pdf_path):
 
 
 # split the text into chunks with overlap
-def split_text_into_chunks(text, chunk_size=300, overlap=50):
+def split_text_into_chunks(text, chunk_size=400, overlap=100):
     """Split text into chunks of approximately chunk_size words with overlap."""
     words = text.split()
     chunks = []
@@ -130,10 +130,11 @@ def main():
     clear_redis_store()
     create_hnsw_index()
 
-    process_pdfs("../data/")
+    process_pdfs("./data/")
     print("\n---Done processing PDFs---\n")
     query_redis("What is the capital of France?")
 
 
 if __name__ == "__main__":
     main()
+    

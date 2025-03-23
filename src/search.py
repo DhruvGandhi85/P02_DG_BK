@@ -102,7 +102,7 @@ Answer:"""
 
     # Generate response using Ollama
     response = ollama.chat(
-        model="mistral:latest", messages=[{"role": "user", "content": prompt}]
+        model="mistral:latest", messages=[{"role": "user", "content": prompt}], options={"num_predict": 256}
     )
 
     return response["message"]["content"]
@@ -153,3 +153,4 @@ def interactive_search():
 
 if __name__ == "__main__":
     interactive_search()
+    
