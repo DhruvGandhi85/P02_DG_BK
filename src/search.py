@@ -89,20 +89,37 @@ def generate_rag_response(query, context_results):
     print(f"context_str: {context_str}")
 
     # Construct prompt with context
-    prompt = f"""You are a helpful AI assistant. 
-    Use the following context to answer the query as accurately as possible. If the context is 
-    not relevant to the query, say 'I don't know'.
+    prompt = f"""### Task:
+    Respond to the user query using the provided context, incorporating inline citations in the format [source_id] **only when the <source_id> tag is explicitly provided** in the context.
 
-Context:
-{context_str}
+    ### Guidelines:
+    - If you don't know the answer, clearly state that.
+    - If uncertain, ask the user for clarification.
+    - Respond in the same language as the user's query.
+    - If the context is unreadable or of poor quality, inform the user and provide the best possible answer.
+    - If the answer isn't present in the context but you possess the knowledge, explain this to the user and provide the answer using your own understanding.
+    - **Only include inline citations using [source_id] when a <source_id> tag is explicitly provided in the context.**  
+    - Do not cite if the <source_id> tag is not provided in the context.  
+    - Do not use XML tags in your response.
+    - Ensure citations are concise and directly related to the information provided.
 
-Query: {query}
+    ### Example of Citation:
+    If the user asks about a specific topic and the information is found in "whitepaper.pdf" with a provided <source_id>, the response should include the citation like so:  
+    * "According to the study, the proposed method increases efficiency by 20% [whitepaper.pdf]."
+    If no <source_id> is present, the response should omit the citation.
 
-Answer:"""
+    ### Output:
+    Provide a clear and direct response to the user's query, including inline citations in the format [source_id] only when the <source_id> tag is present in the context.
+
+    Context: {context_str}
+
+    Query: {query}
+
+    Answer:"""
 
     # Generate response using Ollama
     response = ollama.chat(
-        model="mistral:latest", messages=[{"role": "user", "content": prompt}], options={"num_predict": 256}
+        model="deepseek-r1", messages=[{"role": "user", "content": prompt}], options={"num_predict": 256}
     )
 
     return response["message"]["content"]
@@ -153,4 +170,3 @@ def interactive_search():
 
 if __name__ == "__main__":
     interactive_search()
-    
