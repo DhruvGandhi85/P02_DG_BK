@@ -14,6 +14,7 @@ VECTOR_DIM = 768
 INDEX_NAME = "embedding_index"
 DOC_PREFIX = "doc:"
 DISTANCE_METRIC = "COSINE"
+MODEL = "deepseek-r1"
 
 
 # used to clear the redis vector store
@@ -42,7 +43,6 @@ def create_hnsw_index():
 
 # Generate an embedding using nomic-embed-text
 def get_embedding(text: str, model: str = "nomic-embed-text") -> list:
-
     response = ollama.embeddings(model=model, prompt=text)
     return response["embedding"]
 
@@ -97,7 +97,7 @@ def process_pdfs(data_dir):
                 # print(f"  Chunks: {chunks}")
                 for chunk_index, chunk in enumerate(chunks):
                     # embedding = calculate_embedding(chunk)
-                    embedding = get_embedding(chunk)
+                    embedding = get_embedding(chunk, model=MODEL)
                     store_embedding(
                         file=file_name,
                         page=str(page_num),
@@ -116,7 +116,7 @@ def query_redis(query_text: str):
         .dialect(2)
     )
     query_text = "Efficient search in vector databases"
-    embedding = get_embedding(query_text)
+    embedding = get_embedding(query_text, model=MODEL)
     res = redis_client.ft(INDEX_NAME).search(
         q, query_params={"vec": np.array(embedding, dtype=np.float32).tobytes()}
     )
@@ -132,8 +132,9 @@ def main():
 
     process_pdfs("./data/")
     print("\n---Done processing PDFs---\n")
-    query_redis("What is the capital of France?")
+    # query_redis("What is the capital of France?")
 
 
 if __name__ == "__main__":
     main()
+    
