@@ -76,7 +76,7 @@ def search_embeddings(model, query, top_k=3):
         return []
 
 
-def generate_rag_response(query, context_results):
+def generate_rag_response(embedding_model, query, context_results):
 
     # Prepare context string
     context_str = "\n".join(
@@ -103,7 +103,7 @@ Answer:"""
 
     # Generate response using Ollama
     response = ollama.chat(
-        model=f"{MODEL}:latest", messages=[{"role": "user", "content": prompt}], options={"num_predict": 256}
+        model=f"{embedding_model}:latest", messages=[{"role": "user", "content": prompt}], options={"num_predict": 256}
     )
 
     return response["message"]["content"]
@@ -126,11 +126,15 @@ def interactive_search(model, query=None):
         context_results = search_embeddings(model, query)
 
         # Generate RAG response
-        response = generate_rag_response(query, context_results)
+        response = generate_rag_response(model, query, context_results)
+        response = response.replace(",", "")
+        response = response.replace("\n", "  ")
 
         print("\n--- Response ---")
         print(response)
         break
+
+    return response
 
 
 # def store_embedding(file, page, chunk, embedding):
