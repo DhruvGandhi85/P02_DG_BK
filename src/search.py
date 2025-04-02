@@ -5,7 +5,7 @@ from sentence_transformers import SentenceTransformer
 import ollama
 from redis.commands.search.query import Query
 from redis.commands.search.field import VectorField, TextField
-
+import sys
 
 # Initialize models
 # embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
@@ -15,7 +15,8 @@ VECTOR_DIM = 768
 INDEX_NAME = "embedding_index"
 DOC_PREFIX = "doc:"
 DISTANCE_METRIC = "COSINE"
-MODEL = "deepseek-r1"
+MODEL = ''
+
 
 # def cosine_similarity(vec1, vec2):
 #     """Calculate cosine similarity between two vectors."""
@@ -27,9 +28,9 @@ def get_embedding(text: str, model: str = "nomic-embed-text") -> list:
     return response["embedding"]
 
 
-def search_embeddings(query, top_k=3):
+def search_embeddings(model, query, top_k=3):
 
-    query_embedding = get_embedding(query, model=MODEL)
+    query_embedding = get_embedding(query, model=model)
 
     # Convert embedding to bytes for Redis search
     query_vector = np.array(query_embedding, dtype=np.float32).tobytes()
@@ -108,8 +109,8 @@ Answer:"""
     return response["message"]["content"]
 
 
-def interactive_search(query=None):
     """Interactive search interface."""
+def interactive_search(model, query=None):
     print("🔍 RAG Search Interface")
     print("Type 'exit' to quit")
 
@@ -122,7 +123,7 @@ def interactive_search(query=None):
             break
 
         # Search for relevant embeddings
-        context_results = search_embeddings(query)
+        context_results = search_embeddings(model, query)
 
         # Generate RAG response
         response = generate_rag_response(query, context_results)
@@ -155,5 +156,9 @@ def interactive_search(query=None):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        MODEL = sys.argv[1]
+    else:
+        MODEL = "deepseek-r1"
     interactive_search()
     

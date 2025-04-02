@@ -6,6 +6,7 @@ import numpy as np
 from redis.commands.search.query import Query
 import os
 import fitz
+import sys
 
 # Initialize Redis connection
 redis_client = redis.Redis(host="localhost", port=6380, db=0)
@@ -14,7 +15,7 @@ VECTOR_DIM = 768
 INDEX_NAME = "embedding_index"
 DOC_PREFIX = "doc:"
 DISTANCE_METRIC = "COSINE"
-MODEL = "deepseek-r1"
+MODEL = ''
 
 
 # used to clear the redis vector store
@@ -136,5 +137,9 @@ def main():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        MODEL = sys.argv[1]
+    else:
+        MODEL = "deepseek-r1"
     main()
     
