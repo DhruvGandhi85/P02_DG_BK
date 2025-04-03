@@ -6,16 +6,32 @@ import ollama
 from redis.commands.search.query import Query
 from redis.commands.search.field import VectorField, TextField
 import sys
+import chromadb
+from chromadb.config import Settings
 
 # Initialize models
 # embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+
+# Vector database selection - 'redis' or 'chroma'
+VECTOR_DB = 'chroma'
+
+# Redis configuration
 redis_client = redis.StrictRedis(host="localhost", port=6380, decode_responses=True)
+
+# ChromaDB configuration
+chroma_client = chromadb.Client()
+# Get or create a collection
+try:
+    chroma_collection = chroma_client.get_collection("document_embeddings")
+except:
+    chroma_collection = chroma_client.create_collection("document_embeddings")
 
 VECTOR_DIM = 768
 INDEX_NAME = "embedding_index"
 DOC_PREFIX = "doc:"
 DISTANCE_METRIC = "COSINE"
-MODEL = ''
+MODEL = '' # select model installed in ollama, check model by running 'ollama list' in terminal
+# tested deepseek-r1, mistral, llama, and a few others
 
 
 # def cosine_similarity(vec1, vec2):
@@ -29,17 +45,21 @@ def get_embedding(text: str, model: str = "nomic-embed-text") -> list:
 
 
 def search_embeddings(model, query, top_k=3):
-
     query_embedding = get_embedding(query, model=model)
+    
+    if VECTOR_DB == 'redis':
+        return search_embeddings_redis(query_embedding, top_k)
+    elif VECTOR_DB == 'chroma':
+        return search_embeddings_chroma(query, query_embedding, top_k)
+    else:
+        raise ValueError(f"Unknown vector database: {VECTOR_DB}")
 
+
+def search_embeddings_redis(query_embedding, top_k=3):
     # Convert embedding to bytes for Redis search
     query_vector = np.array(query_embedding, dtype=np.float32).tobytes()
 
     try:
-        # Construct the vector similarity search query
-        # Use a more standard RediSearch vector search syntax
-        # q = Query("*").sort_by("embedding", query_vector)
-
         q = (
             Query("*=>[KNN 5 @embedding $vec AS vector_distance]")
             .sort_by("vector_distance")
@@ -72,46 +92,104 @@ def search_embeddings(model, query, top_k=3):
         return top_results
 
     except Exception as e:
-        print(f"Search error: {e}")
+        print(f"Redis search error: {e}")
+        return []
+
+
+def search_embeddings_chroma(query_text, query_embedding, top_k=3):
+    try:
+        # Query the collection
+        results = chroma_collection.query(
+            query_embeddings=[query_embedding],
+            n_results=top_k
+        )
+        
+        # Transform results into the expected format
+        top_results = []
+        
+        if results and 'metadatas' in results and results['metadatas']:
+            for i, metadata in enumerate(results['metadatas'][0]):
+                similarity = 1.0 - float(results['distances'][0][i]) if 'distances' in results else 0.0
+                top_results.append({
+                    "file": metadata.get('file', 'Unknown'),
+                    "page": metadata.get('page', 'Unknown'),
+                    "chunk": metadata.get('chunk', 'Unknown'),
+                    "similarity": similarity,
+                })
+        
+        # Print results for debugging
+        for result in top_results:
+            print(
+                f"---> File: {result['file']}, Page: {result['page']}, Chunk: {result['chunk']}"
+            )
+            
+        return top_results
+        
+    except Exception as e:
+        print(f"Chroma search error: {e}")
         return []
 
 
 def generate_rag_response(embedding_model, query, context_results):
+    # Prepare context string with better formatting and relevance indicators
+    context_items = []
+    for i, result in enumerate(context_results):
+        similarity = float(result.get('similarity', 0))
+        # Format with clear separation between sources
+        context_items.append(
+            f"[Source {i+1}] From file: {result.get('file', 'Unknown file')}\n"
+            f"Page: {result.get('page', 'Unknown page')}, Section: {result.get('chunk', 'Unknown chunk')}\n"
+            f"Relevance score: {similarity:.2f}\n"
+            f"Content: {result.get('text', '')}\n"
+        )
+    
+    context_str = "\n".join(context_items)
 
-    # Prepare context string
-    context_str = "\n".join(
-        [
-            f"From {result.get('file', 'Unknown file')} (page {result.get('page', 'Unknown page')}, chunk {result.get('chunk', 'Unknown chunk')}) "
-            f"with similarity {float(result.get('similarity', 0)):.2f}"
-            for result in context_results
-        ]
-    )
+    print(f"Retrieved {len(context_results)} relevant documents")
 
-    print(f"context_str: {context_str}")
+    # Improved prompt with better instructions
+    prompt = f"""You are a knowledgeable assistant answering questions based on specific document sources.
 
-    # Construct prompt with context
-    prompt = f"""You are a helpful AI assistant. 
-    Use the following context to answer the query as accurately as possible. If the context is 
-    not relevant to the query, say 'I don't know'.
+            CONTEXT:
+            {context_str}
 
-Context:
-{context_str}
+            USER QUESTION: {query}
 
-Query: {query}
+            INSTRUCTIONS:
+            1. Answer ONLY based on the information provided in the context.
+            2. If the context doesn't contain relevant information, respond with "I don't have enough information to answer this question."
+            3. Do not make up or infer information that isn't explicitly stated in the context.
+            4. Cite the specific sources you used (e.g., [Source 1], [Source 2]) when providing your answer.
+            5. Be concise but thorough.
 
-Answer:"""
+            YOUR ANSWER:"""
 
     # Generate response using Ollama
-    response = ollama.chat(
-        model=f"{embedding_model}:latest", messages=[{"role": "user", "content": prompt}], options={"num_predict": 256}
-    )
+    try:
+        response = ollama.chat(
+            model=embedding_model, 
+            messages=[{"role": "user", "content": prompt}], 
+            options={"num_predict": 512}  # higher token limit
+        )
+        return response["message"]["content"]
+    except Exception as e:
+        print(f"Error generating response: {e}")
+        fallback_model = "mistral"
+        try:
+            print(f"Falling back to {fallback_model}")
+            response = ollama.chat(
+                model=fallback_model, 
+                messages=[{"role": "user", "content": prompt}], 
+                options={"num_predict": 256}
+            )
+            return response["message"]["content"]
+        except:
+            return "I'm sorry, I couldn't generate a response due to a technical issue."
 
-    return response["message"]["content"]
 
-
-    """Interactive search interface."""
 def interactive_search(model, query=None):
-    print("🔍 RAG Search Interface")
+    """Interactive search interface."""
+    print(f"🔍 RAG Search Interface (Using {VECTOR_DB} database)")
     print("Type 'exit' to quit")
 
     while True:
@@ -137,32 +215,34 @@ def interactive_search(model, query=None):
     return response
 
 
-# def store_embedding(file, page, chunk, embedding):
-#     """
-#     Store an embedding in Redis using a hash with vector field.
+# Store embedding functions for both Redis and Chroma
+def store_embedding_redis(file, page, chunk, embedding):
+    """Store an embedding in Redis using a hash with vector field."""
+    key = f"{DOC_PREFIX}:{file}_page_{page}_chunk_{chunk}"
+    redis_client.hset(
+        key,
+        mapping={
+            "file": file,
+            "page": page,
+            "chunk": chunk,
+            "embedding": np.array(embedding, dtype=np.float32).tobytes(),
+        },
+    )
 
-#     Args:
-#         file (str): Source file name
-#         page (str): Page number
-#         chunk (str): Chunk index
-#         embedding (list): Embedding vector
-#     """
-#     key = f"{file}_page_{page}_chunk_{chunk}"
-#     redis_client.hset(
-#         key,
-#         mapping={
-#             "embedding": np.array(embedding, dtype=np.float32).tobytes(),
-#             "file": file,
-#             "page": page,
-#             "chunk": chunk,
-#         },
-#     )
+
+def store_embedding_chroma(file, page, chunk, text, embedding):
+    """Store an embedding in ChromaDB."""
+    chroma_collection.add(
+        embeddings=[embedding],
+        documents=[text],
+        metadatas=[{"file": file, "page": page, "chunk": chunk}],
+        ids=[f"{file}_page_{page}_chunk_{chunk}"]
+    )
 
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         MODEL = sys.argv[1]
     else:
-        MODEL = "deepseek-r1"
-    interactive_search()
-    
+        MODEL = "llama3.2"
+    interactive_search(MODEL)
