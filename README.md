@@ -14,5 +14,6 @@ stored in Redis-stack
 
 # Run Code
 - Set up ollama environment and perform `ollama run {model}` within terminal window.
-- Ensure Redis Stack running on port 6380.
-- run code with `src/search.py` method. Insert parameter as `{model}`
+- Ensure Redis Stack running on port 6380 or ChromaDB running.
+- ingest pdfs using `src/ingest.py`. Insert `{model}` as parameter.
+- run search retrieval with `src/search.py`. Insert `{model}` as parameter.
