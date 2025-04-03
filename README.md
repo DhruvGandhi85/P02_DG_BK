@@ -11,3 +11,8 @@ Docker, change the port number in the creation of the Redis client in both pytho
 - `src/ingest.py` - imports and processes PDF files in `./data` folder. Embeddings and associated information 
 stored in Redis-stack
 - `src/search.py` - simple question answering using 
+
+# Run Code
+- Set up ollama environment and perform `ollama run {model}` within terminal window.
+- Ensure Redis Stack running on port 6380.
+- run code with `src/search.py` method. Insert parameter as `{model}`
